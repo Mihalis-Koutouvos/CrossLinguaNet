@@ -1,27 +1,26 @@
-#This file is for creating our dataset
+"""
+Simple Medical Filter - Bare essentials only.
+Downloads spa.txt and rus.txt → Creates medical_en_es_ru.csv
+"""
 
-import csv 
-import pathlib
+import csv
+from pathlib import Path
 
-#Medical keywords to look out for across English, Spanish, and Russian. This will be used 
-#for filtering across this project
+# Medical keywords for filtering
 MEDICAL_KEYWORDS = {
-    'en': ['patient', 'doctor', 'hospital', 'medicine', 'medication', 'treatment', 
-           'therapy', 'diagnosis', 'symptom', 'disease', 'prescription', 'dose',
-           'tablet', 'pill', 'injection', 'take', 'administer', 'consult'],
-    'es': ['paciente', 'médico', 'doctor', 'hospital', 'medicina', 'medicamento',
-           'tratamiento', 'terapia', 'diagnóstico', 'síntoma', 'enfermedad',
-           'receta', 'dosis', 'tableta', 'píldora', 'tomar', 'consultar'],
-    'ru': ['пациент', 'врач', 'больница', 'лекарство', 'препарат', 'лечение',
-           'терапия', 'диагноз', 'симптом', 'заболевание', 'рецепт', 'доза',
-           'таблетка', 'принимать', 'применять']
+    'en': ['patient', 'doctor', 'medicine', 'treatment', 'dose', 'tablet', 
+           'hospital', 'prescription', 'medication', 'symptom'],
+    'es': ['paciente', 'médico', 'medicina', 'tratamiento', 'dosis', 'tableta',
+           'hospital', 'receta', 'medicamento', 'síntoma'],
+    'ru': ['пациент', 'врач', 'лекарство', 'лечение', 'доза', 'таблетка',
+           'больница', 'рецепт', 'препарат', 'симптом']
 }
 
 def has_medical_keyword(text, lang):
-    """Check if a sentence contains any medical keywords for the given language."""
+    """Check if text contains any medical keyword."""
     text_lower = text.lower()
-    keywords = MEDICAL_KEYWORDS.get(lang, [])
-    return any(keyword in text_lower for keyword in keywords)
+    keywords = MEDICAL_KEYWORDS[lang]
+    return any(kw in text_lower for kw in keywords)
 
 def filter_parallel_file(filepath, lang1, lang2, max_pairs=10000):
     """
@@ -35,34 +34,34 @@ def filter_parallel_file(filepath, lang1, lang2, max_pairs=10000):
     Returns:
         List of (text1, text2) tuples
     """
-    print(f'Reading {filepath.name}...') 
-    medical_pairs = []   
-
+    print(f"Reading {filepath.name}...")
+    medical_pairs = []
+    
     with open(filepath, 'r', encoding='utf-8') as f:
         for line_num, line in enumerate(f, 1):
-            #Stop when there is enough
+            # Stop when we have enough
             if len(medical_pairs) >= max_pairs:
                 break
-
+            
+            # Progress indicator
             if line_num % 100000 == 0:
-                print(f'Processed {line_num} lines, found {len(medical_pairs)} medical pairs so far...')
-
-            #parse tab-separated lines
+                print(f"  Scanned {line_num:,} lines, found {len(medical_pairs)} medical...")
+            
+            # Parse tab-separated line
             parts = line.strip().split('\t')
             if len(parts) != 2:
-                continue  
-
+                continue
+            
             text1, text2 = parts[0], parts[1]
-
-            #Keep if either language has medical keywords
+            
+            # Keep if either language has medical keywords
             if has_medical_keyword(text1, lang1) or has_medical_keyword(text2, lang2):
                 medical_pairs.append((text1, text2))
-        
-    print(f'Found {len(medical_pairs)} medical sentence pairs in {filepath.name}.')
+    
+    print(f"  ✓ Found {len(medical_pairs)} medical pairs\n")
     return medical_pairs
 
-
-def create_csv(en_es_pairs, en_ru_pairs, es_ru_pairs, output_path):
+def create_csv(en_es_pairs, en_ru_pairs, output_path):
     """
     Write medical pairs to CSV with proper schema.
     
@@ -75,16 +74,16 @@ def create_csv(en_es_pairs, en_ru_pairs, es_ru_pairs, output_path):
     with open(output_path, 'w', newline='', encoding='utf-8') as f:
         writer = csv.writer(f)
         
-        #Header
+        # Header
         writer.writerow(['id', 'language', 'text', 'pair_id', 'medical_score'])
         
-        #EN-ES pairs
+        # EN-ES pairs
         for i, (en_text, es_text) in enumerate(en_es_pairs):
             pair_id = f"pair_{i}"
             writer.writerow([f"{pair_id}_en", 'en', en_text, pair_id, 0.5])
             writer.writerow([f"{pair_id}_es", 'es', es_text, pair_id, 0.5])
         
-        #EN-RU pairs  
+        # EN-RU pairs  
         offset = len(en_es_pairs)
         for i, (en_text, ru_text) in enumerate(en_ru_pairs):
             pair_id = f"pair_{offset + i}"
@@ -92,25 +91,22 @@ def create_csv(en_es_pairs, en_ru_pairs, es_ru_pairs, output_path):
             writer.writerow([f"{pair_id}_ru", 'ru', ru_text, pair_id, 0.5])
     
     total_rows = len(en_es_pairs) * 2 + len(en_ru_pairs) * 2
-    print(f"Created {total_rows:,} rows\n")
-
-        
-
-
+    print(f"✓ Done! Created {total_rows:,} rows\n")
 
 def main():
+    """Main execution."""
     print("="*60)
     print("CrossLinguaNet: Medical Data Filter")
     print("="*60)
     print()
     
-    #File paths
+    # File paths
     kaggle_dir = Path("data/raw/kaggle_parallel")
     spa_file = kaggle_dir / "spa.txt"
     rus_file = kaggle_dir / "rus.txt"
     output_file = Path("data/raw/medical_en_es_ru.csv")
     
-    #Check files exist
+    # Check files exist
     if not spa_file.exists():
         print(f"ERROR: {spa_file} not found!")
         print("\nDownload from:")
@@ -122,7 +118,7 @@ def main():
         print(f"ERROR: {rus_file} not found!")
         return
     
-    #Filter for medical content
+    # Filter for medical content
     print("[1/3] Filtering English-Spanish pairs...")
     en_es = filter_parallel_file(spa_file, 'en', 'es', max_pairs=10000)
     
