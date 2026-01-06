@@ -5,7 +5,7 @@ import pandas as pd
 from pathlib import Path
 from typing import List, Optional
 from tqdm import tqdm
-from src.data.schema import MedicalInstruction, validate_instruction
+from .schema import MedicalInstruction, validate_instruction
 
 class DataLoader:
     """
@@ -24,7 +24,7 @@ class DataLoader:
         if not self.raw_data_path.exists():
             raise FileNotFoundError(f"Raw data path {raw_data_path} does not exist.")
         
-    def load_csv(self, file_name: str, text_column: str, language_column: str, 
+    def load_from_csv(self, filename: str, text_column: str, language_column: str,
                  id_column: Optional[str] = None, pair_id_column: Optional[str] = None) -> List[MedicalInstruction]:
         """
         Load data from CSV and convert to unified schema.
@@ -40,9 +40,9 @@ class DataLoader:
             List of MedicalInstruction objects
         """
 
-        filepath = self.raw_data_path / file_name
+        filepath = self.raw_data_path / filename
         if not filepath.exists():
-            raise FileNotFoundError(f"File {file_name} not found in {self.raw_data_path}")
+            raise FileNotFoundError(f"File {filepath} not found in {self.raw_data_path}")
 
         print(f'Loading data from {filepath}...')   
         df = pd.read_csv(filepath)

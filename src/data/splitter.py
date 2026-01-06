@@ -3,6 +3,7 @@
 import numpy as np
 import pandas as pd
 from typing import Tuple, Optional
+from scipy import stats
 from sklearn.model_selection import train_test_split
 from pathlib import Path
 
@@ -164,33 +165,47 @@ class DataSplitter:
         print(f"  Val:   {len(val_df)} samples")
         print(f"  Test:  {len(test_df)} samples")
     
-    def get_split_statistics(
-        self,
-        train_df: pd.DataFrame,
-        val_df: pd.DataFrame,
-        test_df: pd.DataFrame,
-        stratify_column: str = 'language'
-    ) -> pd.DataFrame:
+    def get_split_statistics(self, train_df, val_df, test_df, stratify_column: str = "language"):
         """
-        Get statistics about the splits.
-        
+        Get statistics about the data splits.
+    
+        Args:
+            train_df: Training DataFrame
+            val_df: Validation DataFrame
+            test_df: Test DataFrame
+            stratify_column: Column used for stratification (default: "language")
+    
         Returns:
-            DataFrame with language distribution across splits
+            Dictionary with split statistics
         """
-        stats = []
-        
-        for split_name, split_df in [('train', train_df), ('val', val_df), ('test', test_df)]:
-            lang_counts = split_df[stratify_column].value_counts()
-            for lang, count in lang_counts.items():
-                stats.append({
-                    'split': split_name,
-                    'language': lang,
-                    'count': count,
-                    'percentage': count / len(split_df) * 100
-                })
-        
-        stats_df = pd.DataFrame(stats)
-        return stats_df.pivot(index='language', columns='split', values='count').fillna(0)
+        import pandas as pd
+    
+        stats = {
+            "train": {"total": len(train_df)},
+            "val": {"total": len(val_df)},
+            "test": {"total": len(test_df)}
+        }
+    
+        # Get statistics for each split
+        for split_name, split_df in [("train", train_df), ("val", val_df), ("test", test_df)]:
+            if stratify_column in split_df.columns:
+                # Extract the column safely
+                col = split_df[stratify_column]
+            
+                # Handle case where it's a DataFrame instead of Series
+                if isinstance(col, pd.DataFrame):
+                    col = col.iloc[:, 0]
+            
+                # Now get value counts
+                lang_counts = col.value_counts()
+            
+                stats[split_name]["by_language"] = lang_counts.to_dict()
+                stats[split_name]["languages"] = list(lang_counts.index)
+            else:
+                stats[split_name]["by_language"] = {}
+                stats[split_name]["languages"] = []
+    
+        return stats
 
 
 if __name__ == "__main__":

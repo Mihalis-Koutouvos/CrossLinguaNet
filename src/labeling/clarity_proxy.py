@@ -3,6 +3,7 @@
 import numpy as np
 import pandas as pd
 from typing import Dict, List
+from scipy import stats
 from scipy.stats import zscore
 
 
@@ -61,41 +62,35 @@ class ClarityProxyLabeler:
         
         return score
     
-    def normalize_scores_by_language(
+    def normalize_scores_global(
         self,
-        scores: List[float],
-        languages: List[str]
+        scores: List[float]
     ) -> np.ndarray:
         """
-        Z-score normalize scores within each language group.
+        Min-max normalize scores globally across all languages.
         
-        This prevents bias from cross-language differences in features.
+        This preserves variation while scaling to [0, 1] range.
         
         Args:
             scores: List of raw clarity scores
-            languages: Corresponding language codes
         
         Returns:
-            Normalized scores as numpy array
+            Normalized scores as numpy array in [0, 1] range
         """
         scores_array = np.array(scores)
-        languages_array = np.array(languages)
-        normalized_scores = np.zeros_like(scores_array)
         
-        # Normalize within each language
-        for lang in np.unique(languages_array):
-            lang_mask = languages_array == lang
-            lang_scores = scores_array[lang_mask]
-            
-            # Only normalize if we have multiple samples
-            if len(lang_scores) > 1:
-                normalized_lang_scores = zscore(lang_scores)
-                normalized_scores[lang_mask] = normalized_lang_scores
-            else:
-                # Single sample, just set to 0
-                normalized_scores[lang_mask] = 0.0
+        # Get global min and max
+        min_score = scores_array.min()
+        max_score = scores_array.max()
         
-        return normalized_scores
+        # Avoid division by zero
+        if max_score - min_score < 1e-10:
+            return np.full_like(scores_array, 0.5)
+        
+        # Min-max normalization to [0, 1]
+        normalized = (scores_array - min_score) / (max_score - min_score)
+        
+        return normalized
     
     def create_labels(
         self,
@@ -119,11 +114,12 @@ class ClarityProxyLabeler:
             score = self.compute_raw_score(features)
             raw_scores.append(score)
         
-        # Normalize by language
-        normalized_scores = self.normalize_scores_by_language(
-            raw_scores,
-            features_df[language_column].values
-        )
+        # OPTION 1: Use raw scores directly (no normalization)
+        # This is often best for regression tasks
+        normalized_scores = raw_scores
+        
+        # OPTION 2: Use global min-max normalization (uncomment to use)
+        # normalized_scores = self.normalize_scores_global(raw_scores)
         
         # Add to dataframe
         result_df = features_df.copy()
@@ -132,28 +128,58 @@ class ClarityProxyLabeler:
         
         return result_df
     
-    def get_score_distribution(
-        self,
-        labeled_df: pd.DataFrame,
-        language_column: str = 'language'
-    ) -> Dict[str, Dict[str, float]]:
+    def get_score_distribution(self, labeled_data, language_column: str = "language"):
         """
-        Get clarity score statistics by language.
+        Get distribution statistics for clarity scores.
+        """
+        import pandas as pd
         
-        Returns:
-            Dict mapping language to statistics
-        """
         stats = {}
         
-        for lang in labeled_df[language_column].unique():
-            lang_scores = labeled_df[labeled_df[language_column] == lang]['clarity_score']
-            stats[lang] = {
-                'mean': lang_scores.mean(),
-                'std': lang_scores.std(),
-                'min': lang_scores.min(),
-                'max': lang_scores.max(),
-                'count': len(lang_scores)
-            }
+        # Handle dictionary input (the expected format from create_labels when used differently)
+        if isinstance(labeled_data, dict):
+            for lang, df in labeled_data.items():
+                if "clarity_score" in df.columns:
+                    scores = df["clarity_score"].dropna()
+                    if len(scores) > 0:
+                        stats[lang] = {
+                            "count": len(scores),
+                            "mean": float(scores.mean()),
+                            "std": float(scores.std()),
+                            "min": float(scores.min()),
+                            "max": float(scores.max()),
+                            "median": float(scores.median()),
+                        }
+        # Handle DataFrame input
+        else:
+            # Ensure language_column is a string
+            if isinstance(language_column, list):
+                language_column = language_column[0] if language_column else "language"
+            
+            if language_column in labeled_data.columns:
+                # Extract the column safely
+                lang_col = labeled_data[language_column]
+                
+                # If it's a DataFrame, extract the first column
+                if isinstance(lang_col, pd.DataFrame):
+                    lang_col = lang_col.iloc[:, 0]
+                
+                # Get unique values
+                unique_langs = lang_col.unique()
+                
+                for lang in unique_langs:
+                    lang_df = labeled_data[labeled_data[language_column] == lang]
+                    if "clarity_score" in lang_df.columns:
+                        scores = lang_df["clarity_score"].dropna()
+                        if len(scores) > 0:
+                            stats[lang] = {
+                                "count": len(scores),
+                                "mean": float(scores.mean()),
+                                "std": float(scores.std()),
+                                "min": float(scores.min()),
+                                "max": float(scores.max()),
+                                "median": float(scores.median()),
+                            }
         
         return stats
 

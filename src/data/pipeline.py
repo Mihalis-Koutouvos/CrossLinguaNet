@@ -4,6 +4,12 @@ import pandas as pd
 from pathlib import Path
 import sys
 
+from .loader import DataLoader
+from .schema import MedicalInstruction
+from ..features.linguistic import FeaturePipeline
+from ..labeling.clarity_proxy import ClarityProxyLabeler, ClarityAnalyzer
+from .splitter import DataSplitter
+
 # Add src to path for imports
 sys.path.append(str(Path(__file__).parent.parent))
 
@@ -18,8 +24,7 @@ class CrossLinguaNetPipeline:
     """
     End-to-end pipeline for CrossLinguaNet data processing.
     """
-    
-    def __init__(self, project_root: str = "../.."):
+    def __init__(self, project_root: str = "."):
         """
         Initialize pipeline.
         
@@ -91,6 +96,7 @@ class CrossLinguaNetPipeline:
         
         # Combine with original data
         combined_df = pd.concat([data_df.reset_index(drop=True), features_df], axis=1)
+        combined_df = combined_df.loc[:, ~combined_df.columns.duplicated()]
         print(f"Extracted {len(features_df.columns)} features")
         
         # Save features
@@ -167,34 +173,45 @@ class CrossLinguaNetPipeline:
         train_df: pd.DataFrame,
         val_df: pd.DataFrame,
         test_df: pd.DataFrame
-    ):
+):
         """Generate a summary report of the dataset."""
         report = []
         report.append("CrossLinguaNet Dataset Summary")
         report.append("=" * 60)
         report.append(f"\nTotal Instructions: {len(full_df)}")
-        report.append(f"Languages: {', '.join(sorted(full_df['language'].unique()))}")
+    
+        # Fix 1: Safe extraction of unique languages
+        lang_col = full_df['language']
+        if isinstance(lang_col, pd.DataFrame):
+            lang_col = lang_col.iloc[:, 0]
+        report.append(f"Languages: {', '.join(sorted(lang_col.unique()))}")
+    
         report.append(f"\nClarity Score Range: [{full_df['clarity_score'].min():.3f}, {full_df['clarity_score'].max():.3f}]")
         report.append(f"Mean Clarity Score: {full_df['clarity_score'].mean():.3f}")
         report.append(f"Std Clarity Score: {full_df['clarity_score'].std():.3f}")
-        
+    
         report.append("\n\nLanguage Distribution:")
-        for lang, count in full_df['language'].value_counts().items():
+    
+        # Fix 2: Safe extraction for value_counts
+        lang_col = full_df['language']
+        if isinstance(lang_col, pd.DataFrame):
+            lang_col = lang_col.iloc[:, 0]
+        for lang, count in lang_col.value_counts().items():
             pct = count / len(full_df) * 100
             report.append(f"  {lang.upper()}: {count:,} ({pct:.1f}%)")
-        
+    
         report.append("\n\nSplit Sizes:")
         report.append(f"  Train: {len(train_df):,} ({len(train_df)/len(full_df)*100:.1f}%)")
         report.append(f"  Val:   {len(val_df):,} ({len(val_df)/len(full_df)*100:.1f}%)")
         report.append(f"  Test:  {len(test_df):,} ({len(test_df)/len(full_df)*100:.1f}%)")
-        
+    
         if 'pair_id' in full_df.columns:
             num_pairs = full_df['pair_id'].nunique()
             report.append(f"\n\nParallel Translation Pairs: {num_pairs:,}")
-        
+    
         report_text = "\n".join(report)
         print(report_text)
-        
+    
         # Save report
         report_path = self.reports_path / "dataset_summary.txt"
         with open(report_path, 'w') as f:
